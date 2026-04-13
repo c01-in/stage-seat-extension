@@ -1,55 +1,113 @@
-# StageSeat Privacy Policy
+# Privacy Policy
 
-Effective date: April 12, 2026
+**Last updated:** 2026
 
-StageSeat is a Chrome extension that reshapes the audio of the current browser tab based on a virtual seat position.
+StageSeat ("the Extension") is committed to protecting your privacy. This Privacy Policy explains what data is (and is not) collected when you use the Extension.
 
-## What StageSeat Does
+---
 
-- Captures audio from the user-selected tab after an explicit user action
-- Processes that audio locally with the Web Audio API
-- Lets the user move a seat position in a side panel to hear different venue perspectives
+## Overview
+
+StageSeat enhances audio playback by applying real-time sound processing directly within your browser.
+All processing is performed locally on your device.
+
+**We do not collect, store, or transmit any personal data.**
+
+---
 
 ## Data Collection
 
-- StageSeat does not collect personal data
-- StageSeat does not transmit audio, browsing data, or settings to any remote server
-- StageSeat does not use analytics, ads, trackers, or remote code
+StageSeat does **not** collect any of the following:
 
-## Audio Handling
+* Personal information (such as name, email, or account data)
+* Browsing history
+* Audio content
+* Website content
+* Usage analytics or tracking data
 
-- Audio is processed locally on the user's device
-- Audio is not stored, recorded, downloaded, exported, or shared
-- StageSeat only affects the active user-selected source tab
+---
 
-## Local Storage
+## Audio Processing
 
-StageSeat stores a small amount of local extension state so the experience feels consistent between sessions:
+The Extension accesses audio from the currently active browser tab only when explicitly triggered by the user.
 
-- selected venue preset
-- listener position
-- realism value
-- energy value
+All audio processing is:
 
-This information is stored locally in Chrome extension storage and is used only for core product functionality.
+* Performed **locally in the browser**
+* Done in **real time**
+* **Not recorded**
+* **Not stored**
+* **Not transmitted** to any external server
+
+StageSeat does not retain any audio data after processing.
+
+---
 
 ## Permissions
 
-- `activeTab`: used after the user clicks the extension action to work with the current source tab
-- `tabs`: used to identify the current source tab and show the correct tab context in the UI
-- `tabCapture`: used to capture the current tab's audio stream
-- `offscreen`: used to run the background audio processing pipeline
-- `sidePanel`: used to render the StageSeat control UI
-- `storage`: used to save local user settings
+StageSeat may request the following permissions:
 
-## Data Sharing
+### `tabCapture`
 
-StageSeat does not sell, share, or transfer user data to third parties.
+Used to access audio from the current browser tab for real-time audio enhancement.
+
+* Only activated when the user interacts with the Extension
+* No audio data is stored or transmitted
+
+### `activeTab`
+
+Used to identify and interact with the currently active tab.
+
+* No browsing data is collected or stored
+
+These permissions are used strictly for the functionality of the Extension.
+
+---
+
+## Data Storage
+
+StageSeat does not store any user data, either locally or remotely.
+
+---
+
+## Third-Party Services
+
+StageSeat does not use:
+
+* Third-party analytics
+* Tracking services
+* External APIs for audio processing
+
+No data is shared with any third parties.
+
+---
 
 ## Security
 
-StageSeat does not fetch or execute remote code. All audio processing runs locally inside the extension.
+Since no personal data is collected or transmitted, there is no risk of data exposure from the Extension.
 
-## Changes
+---
 
-If this policy changes, the latest version will be published with the extension materials.
+## Changes to This Policy
+
+This Privacy Policy may be updated in the future. Any changes will be reflected on this page.
+
+---
+
+## Contact
+
+If you have any questions about this Privacy Policy, you can contact us via the GitHub repository:
+
+https://github.com/c01-in/stage-seat-extension
+
+---
+
+## Summary
+
+* No data collection
+* No audio storage
+* No uploads
+* No tracking
+* 100% local processing
+
+Your data stays entirely on your device.
