@@ -1,0 +1,84 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="48" y1="32" x2="464" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A1C4A"/>
+      <stop offset="0.55" stop-color="#07153A"/>
+      <stop offset="1" stop-color="#040B22"/>
+    </linearGradient>
+
+    <linearGradient id="border" x1="64" y1="48" x2="448" y2="464" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2A4FA4" stop-opacity="0.65"/>
+      <stop offset="1" stop-color="#1A2D63" stop-opacity="0.35"/>
+    </linearGradient>
+
+    <linearGradient id="cyan" x1="150" y1="118" x2="362" y2="210" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7EE7F7"/>
+      <stop offset="1" stop-color="#66C8E8"/>
+    </linearGradient>
+
+    <radialGradient id="listenerGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 294) rotate(90) scale(130)">
+      <stop stop-color="#F7B24D" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#F7B24D" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="listenerCore" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 294) rotate(90) scale(22)">
+      <stop stop-color="#FFE3A8"/>
+      <stop offset="0.65" stop-color="#FFC86B"/>
+      <stop offset="1" stop-color="#F2A63D"/>
+    </radialGradient>
+
+    <filter id="softGlow" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="cyanGlow" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="24" y="24" width="464" height="464" rx="44" fill="url(#bg)"/>
+  <rect x="24.75" y="24.75" width="462.5" height="462.5" rx="43.25" stroke="url(#border)" stroke-width="1.5"/>
+
+  <path d="M92 154C92 136.327 106.327 122 124 122H388C405.673 122 420 136.327 420 154V404C420 421.673 405.673 436 388 436H124C106.327 436 92 421.673 92 404V154Z" fill="url(#border)" fill-opacity="0.08"/>
+  <path d="M92 154C92 136.327 106.327 122 124 122H388C405.673 122 420 136.327 420 154V404C420 421.673 405.673 436 388 436H124C106.327 436 92 421.673 92 404V154Z" stroke="#4D67B2" stroke-opacity="0.18" stroke-width="1"/>
+
+  <path d="M124 168H388" stroke="#8AA4F0" stroke-opacity="0.10" stroke-width="1"/>
+  <path d="M124 224H388" stroke="#8AA4F0" stroke-opacity="0.08" stroke-width="1"/>
+  <path d="M124 280H388" stroke="#8AA4F0" stroke-opacity="0.08" stroke-width="1"/>
+  <path d="M124 336H388" stroke="#8AA4F0" stroke-opacity="0.08" stroke-width="1"/>
+  <path d="M124 392H388" stroke="#8AA4F0" stroke-opacity="0.08" stroke-width="1"/>
+
+  <path d="M172 122V436" stroke="#8AA4F0" stroke-opacity="0.08" stroke-width="1"/>
+  <path d="M220 122V436" stroke="#8AA4F0" stroke-opacity="0.08" stroke-width="1"/>
+  <path d="M268 122V436" stroke="#8AA4F0" stroke-opacity="0.10" stroke-width="1"/>
+  <path d="M316 122V436" stroke="#8AA4F0" stroke-opacity="0.08" stroke-width="1"/>
+  <path d="M364 122V436" stroke="#8AA4F0" stroke-opacity="0.08" stroke-width="1"/>
+
+  <g filter="url(#cyanGlow)">
+    <rect x="145" y="152" width="222" height="42" rx="21" fill="#8DEBFA" fill-opacity="0.14" stroke="#7EDFF4" stroke-opacity="0.32"/>
+    <rect x="160" y="165" width="60" height="14" rx="7" fill="url(#cyan)"/>
+    <rect x="226" y="163" width="60" height="14" rx="7" fill="url(#cyan)"/>
+    <rect x="292" y="165" width="60" height="14" rx="7" fill="url(#cyan)"/>
+  </g>
+
+  <path d="M256 180V294" stroke="#6AD6EE" stroke-opacity="0.34" stroke-width="2"/>
+
+  <circle cx="256" cy="180" r="56" stroke="#6AD6EE" stroke-opacity="0.18" stroke-width="2"/>
+  <circle cx="256" cy="180" r="98" stroke="#6AD6EE" stroke-opacity="0.12" stroke-width="2"/>
+  <circle cx="256" cy="180" r="142" stroke="#6AD6EE" stroke-opacity="0.08" stroke-width="2"/>
+
+  <circle cx="256" cy="294" r="130" fill="url(#listenerGlow)"/>
+
+  <g filter="url(#softGlow)">
+    <circle cx="256" cy="294" r="18" fill="url(#listenerCore)"/>
+    <circle cx="256" cy="294" r="24" stroke="#FFD57C" stroke-opacity="0.42" stroke-width="2"/>
+  </g>
+</svg>

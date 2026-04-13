@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StageSeat Privacy Policy</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        background: #07153a;
+        color: #f7f8fb;
+      }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at top, rgba(110, 231, 249, 0.14), transparent 32%),
+          linear-gradient(180deg, #0a1c4a 0%, #07153a 48%, #040b22 100%);
+      }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 48px 20px 80px;
+      }
+      h1, h2 {
+        line-height: 1.1;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 40px;
+      }
+      h2 {
+        margin-top: 32px;
+        font-size: 20px;
+      }
+      p, li {
+        color: rgba(247, 248, 251, 0.82);
+        line-height: 1.65;
+      }
+      .eyebrow {
+        color: #6ee7f9;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        font-size: 12px;
+      }
+      code {
+        color: #ffd57c;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">StageSeat</div>
+      <h1>Privacy Policy</h1>
+      <p>Effective date: April 12, 2026</p>
+      <p>
+        StageSeat is a Chrome extension that reshapes the audio of the current browser tab
+        based on a virtual seat position.
+      </p>
+
+      <h2>What StageSeat Does</h2>
+      <ul>
+        <li>Captures audio from the user-selected tab after an explicit user action</li>
+        <li>Processes that audio locally with the Web Audio API</li>
+        <li>Lets the user move a seat position in a side panel to hear different venue perspectives</li>
+      </ul>
+
+      <h2>Data Collection</h2>
+      <ul>
+        <li>StageSeat does not collect personal data</li>
+        <li>StageSeat does not transmit audio, browsing data, or settings to any remote server</li>
+        <li>StageSeat does not use analytics, ads, trackers, or remote code</li>
+      </ul>
+
+      <h2>Audio Handling</h2>
+      <ul>
+        <li>Audio is processed locally on the user's device</li>
+        <li>Audio is not stored, recorded, downloaded, exported, or shared</li>
+        <li>StageSeat only affects the active user-selected source tab</li>
+      </ul>
+
+      <h2>Local Storage</h2>
+      <p>StageSeat stores a small amount of local state for core functionality:</p>
+      <ul>
+        <li>selected venue preset</li>
+        <li>listener position</li>
+        <li>realism value</li>
+        <li>energy value</li>
+      </ul>
+
+      <h2>Permissions</h2>
+      <ul>
+        <li><code>activeTab</code>: used after the user clicks the extension action to work with the current source tab</li>
+        <li><code>tabs</code>: used to identify the current source tab and show the correct tab context in the UI</li>
+        <li><code>tabCapture</code>: used to capture the current tab's audio stream</li>
+        <li><code>offscreen</code>: used to run the background audio processing pipeline</li>
+        <li><code>sidePanel</code>: used to render the StageSeat control UI</li>
+        <li><code>storage</code>: used to save local user settings</li>
+      </ul>
+
+      <h2>Data Sharing</h2>
+      <p>StageSeat does not sell, share, or transfer user data to third parties.</p>
+
+      <h2>Security</h2>
+      <p>StageSeat does not fetch or execute remote code. All audio processing runs locally inside the extension.</p>
+    </main>
+  </body>
+</html>
