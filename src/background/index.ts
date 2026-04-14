@@ -79,6 +79,7 @@ async function persistSettings() {
     position: sessionState.listenerPosition,
     realism: sessionState.realism,
     energy: sessionState.energy,
+    clarity: sessionState.clarity,
   })
   await chrome.storage.local.set({
     [SETTINGS_KEY]: {
@@ -86,6 +87,7 @@ async function persistSettings() {
       listenerPosition: sessionState.listenerPosition,
       realism: sessionState.realism,
       energy: sessionState.energy,
+      clarity: sessionState.clarity,
     },
   })
 }
@@ -143,10 +145,11 @@ async function hydrateSettings() {
   const value = stored[SETTINGS_KEY] as
     | {
         arenaId?: string
-        listenerPosition?: SessionReducerState['listenerPosition']
-        realism?: number
-        energy?: number
-      }
+      listenerPosition?: SessionReducerState['listenerPosition']
+      realism?: number
+      energy?: number
+      clarity?: number
+    }
     | undefined
   if (!value) {
     logBackground('No saved settings found')
@@ -159,6 +162,7 @@ async function hydrateSettings() {
     listenerPosition: value.listenerPosition ?? sessionState.listenerPosition,
     realism: value.realism ?? sessionState.realism,
     energy: value.energy ?? sessionState.energy,
+    clarity: value.clarity ?? sessionState.clarity,
   }
   logBackground('Hydrated saved settings', value)
 }
@@ -399,6 +403,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
           target: MESSAGE_TARGET_OFFSCREEN,
           realism: sessionState.realism,
           energy: sessionState.energy,
+          clarity: sessionState.clarity,
           arenaId: sessionState.arenaId,
         } satisfies RuntimeMessage)
         sendResponse({ ok: true })
@@ -407,11 +412,13 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
         logBackground('Parameter update received', {
           realism: message.realism,
           energy: message.energy,
+          clarity: message.clarity,
         })
         sessionState = reduceSessionState(sessionState, {
           type: 'PARAMS',
           realism: message.realism,
           energy: message.energy,
+          clarity: message.clarity,
         })
         emitStatus()
         await persistSettings()
@@ -433,6 +440,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
           position: sessionState.listenerPosition,
           realism: sessionState.realism,
           energy: sessionState.energy,
+          clarity: sessionState.clarity,
           arenaId: sessionState.arenaId,
         } satisfies RuntimeMessage)
         sendResponse({ ok: true })

@@ -43,6 +43,7 @@ export interface CaptureSessionState {
   listenerPosition: ListenerPosition
   realism: number
   energy: number
+  clarity: number
   meterLevel: number
   errorMessage: string | null
 }

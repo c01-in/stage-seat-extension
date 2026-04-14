@@ -29,8 +29,9 @@ export const ARENA_PRESET: ArenaPreset = {
 
 export const ARENA_PRESETS = [ARENA_PRESET]
 export const DEFAULT_ARENA_ID = ARENA_PRESET.id
-export const DEFAULT_REALISM = 0.68
-export const DEFAULT_ENERGY = 0.62
+export const DEFAULT_REALISM = 0
+export const DEFAULT_ENERGY = 0
+export const DEFAULT_CLARITY = 0
 
 export function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value))

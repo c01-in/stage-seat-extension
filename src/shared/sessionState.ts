@@ -1,5 +1,6 @@
 import {
   DEFAULT_ARENA_ID,
+  DEFAULT_CLARITY,
   DEFAULT_ENERGY,
   DEFAULT_REALISM,
   ARENA_PRESET,
@@ -14,7 +15,7 @@ export type SessionReducerAction =
   | { type: 'ARM_TAB'; tabId: number; tabTitle: string }
   | { type: 'SET_PHASE'; phase: SessionPhase }
   | { type: 'POSITION'; position: ListenerPosition }
-  | { type: 'PARAMS'; realism: number; energy: number }
+  | { type: 'PARAMS'; realism: number; energy: number; clarity: number }
   | { type: 'SWEET_SPOT' }
   | { type: 'METER'; level: number }
   | { type: 'ERROR'; error: string }
@@ -29,6 +30,7 @@ export function createInitialSessionState(): SessionReducerState {
     listenerPosition: { ...ARENA_PRESET.sweetSpot },
     realism: DEFAULT_REALISM,
     energy: DEFAULT_ENERGY,
+    clarity: DEFAULT_CLARITY,
     meterLevel: 0,
     errorMessage: null,
   }
@@ -62,6 +64,7 @@ export function reduceSessionState(
         ...state,
         realism: action.realism,
         energy: action.energy,
+        clarity: action.clarity,
       }
     case 'SWEET_SPOT':
       return {
@@ -86,6 +89,7 @@ export function reduceSessionState(
         tabTitle: action.keepTab ? state.tabTitle : '',
         realism: state.realism,
         energy: state.energy,
+        clarity: state.clarity,
         listenerPosition: state.listenerPosition,
       }
     default:

@@ -14,6 +14,9 @@ describe('session state reducer', () => {
     expect(armed.tabId).toBe(12)
     expect(armed.tabTitle).toBe('Example stream')
     expect(armed.listenerPosition).toEqual(ARENA_PRESET.sweetSpot)
+    expect(armed.realism).toBe(0)
+    expect(armed.energy).toBe(0)
+    expect(armed.clarity).toBe(initial.clarity)
   })
 
   it('clamps positions into the audience area', () => {
@@ -44,5 +47,18 @@ describe('session state reducer', () => {
 
     expect(errored.phase).toBe('error')
     expect(errored.errorMessage).toBe('Capture failed')
+  })
+
+  it('stores the latest clarity value with the other controls', () => {
+    const next = reduceSessionState(createInitialSessionState(), {
+      type: 'PARAMS',
+      realism: 0.74,
+      energy: 0.58,
+      clarity: 0.42,
+    })
+
+    expect(next.realism).toBe(0.74)
+    expect(next.energy).toBe(0.58)
+    expect(next.clarity).toBe(0.42)
   })
 })
