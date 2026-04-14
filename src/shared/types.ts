@@ -44,6 +44,9 @@ export interface CaptureSessionState {
   realism: number
   energy: number
   meterLevel: number
+  currentSongKey: string | null
+  currentEstimatedBpm: number | null
+  currentDetectedNote: string | null
   errorMessage: string | null
 }
 

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "StageSeat",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minimum_chrome_version": "116",
   "description": "Use seat position to reshape live-like listening on the current tab.",
   "permissions": ["activeTab", "tabs", "storage", "offscreen", "tabCapture", "sidePanel"],

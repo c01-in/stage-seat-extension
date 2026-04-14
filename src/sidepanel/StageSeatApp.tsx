@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { Info } from 'lucide-react'
 import { ARENA_PRESET, clampToAudience } from '../shared/arena'
+import { DEBUG_MODE } from '../shared/debug'
 import {
   MESSAGE_TARGET_BACKGROUND,
   MESSAGE_TARGET_SIDEPANEL,
@@ -134,6 +135,44 @@ function statusCopy(state: CaptureSessionState) {
     default:
       return state.tabId ? 'Tab armed' : 'Focus a playable tab'
   }
+}
+
+function liveMeterLabel(state: CaptureSessionState) {
+  if (!DEBUG_MODE) {
+    return 'Live'
+  }
+
+  if (
+    state.phase !== 'active' &&
+    state.phase !== 'starting' &&
+    state.phase !== 'stopping'
+  ) {
+    return 'Live'
+  }
+
+  const parts = ['Live']
+  parts.push(state.currentSongKey ?? '...')
+  if (state.currentEstimatedBpm) {
+    parts.push(`${state.currentEstimatedBpm} BPM`)
+  }
+
+  return parts.join(' | ')
+}
+
+function liveNoteLabel(state: CaptureSessionState) {
+  if (!DEBUG_MODE) {
+    return null
+  }
+
+  if (
+    state.phase !== 'active' &&
+    state.phase !== 'starting' &&
+    state.phase !== 'stopping'
+  ) {
+    return null
+  }
+
+  return state.currentDetectedNote ?? '...'
 }
 
 export function StageSeatApp() {
@@ -379,8 +418,9 @@ export function StageSeatApp() {
         </label>
 
         <div className="meter-card">
-          <div className="control-copy compact">
-            <span>Live</span>
+          <div className="control-copy compact live-readout">
+            <span>{liveMeterLabel(state)}</span>
+            {liveNoteLabel(state) ? <strong className="note-badge">{liveNoteLabel(state)}</strong> : null}
           </div>
           <div className="meter-track">
             <div
