@@ -32,12 +32,14 @@ export type RuntimeMessage =
       arenaId?: string
       realism?: number
       energy?: number
+      clarity?: number
     }
   | {
       type: 'PARAMS_UPDATE'
       target: 'background' | 'offscreen'
       realism: number
       energy: number
+      clarity: number
       arenaId?: string
     }
   | {

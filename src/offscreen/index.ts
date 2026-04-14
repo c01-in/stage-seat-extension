@@ -5,10 +5,13 @@ import {
   isTargetedMessage,
   type RuntimeMessage,
 } from '../shared/messages'
+import { estimateVocalPresenceFromSpectrum } from '../shared/vocalPresence'
 import type { AcousticSnapshot, CaptureSessionState, DebugLogEntry } from '../shared/types'
 
 const SMOOTH_SECONDS = 0.08
 const METER_INTERVAL_MS = 1000 / 24
+const CLARITY_DETECTION_INTERVAL_MS = 220
+const ANALYSIS_ACTIVE_LEVEL = 0.018
 
 function toDetails(value: unknown) {
   if (value == null) {
@@ -72,6 +75,7 @@ class ArenaAudioEngine {
   private context: AudioContext | null = null
   private mediaStream: MediaStream | null = null
   private meterTimer: number | null = null
+  private clarityTimer: number | null = null
 
   private directGain: GainNode | null = null
   private directPanner: StereoPannerNode | null = null
@@ -92,6 +96,9 @@ class ArenaAudioEngine {
   private lowShelf: BiquadFilterNode | null = null
   private masterGain: GainNode | null = null
   private analyser: AnalyserNode | null = null
+  private clarityAnalyser: AnalyserNode | null = null
+  private currentMeterLevel = 0
+  private vocalPresence = 0.24
 
   async start(streamId: string, state: CaptureSessionState) {
     await this.stop('restart')
@@ -101,6 +108,7 @@ class ArenaAudioEngine {
       position: state.listenerPosition,
       realism: state.realism,
       energy: state.energy,
+      clarity: state.clarity,
     })
 
     this.context = new AudioContext({ latencyHint: 'interactive' })
@@ -157,8 +165,14 @@ class ArenaAudioEngine {
     const masterGain = this.context.createGain()
     const analyser = this.context.createAnalyser()
     analyser.fftSize = 1024
+    const clarityAnalyser = this.context.createAnalyser()
+    clarityAnalyser.fftSize = 2048
+    clarityAnalyser.smoothingTimeConstant = 0.76
+    clarityAnalyser.minDecibels = -100
+    clarityAnalyser.maxDecibels = -18
 
     sourceNode.connect(directLowpass)
+    sourceNode.connect(clarityAnalyser)
     directLowpass.connect(directPresence)
     directPresence.connect(directPanner)
     directPanner.connect(directGain)
@@ -205,6 +219,9 @@ class ArenaAudioEngine {
     this.lowShelf = lowShelf
     this.masterGain = masterGain
     this.analyser = analyser
+    this.clarityAnalyser = clarityAnalyser
+    this.currentMeterLevel = 0
+    this.vocalPresence = 0.24
 
     media.getAudioTracks().forEach((track) => {
       track.addEventListener('ended', () => {
@@ -222,6 +239,7 @@ class ArenaAudioEngine {
     logOffscreen('Audio context resumed', { state: this.context.state })
     this.applyState(state, true)
     this.startMeterLoop()
+    this.startClarityDetectionLoop()
   }
 
   async stop(reason = 'Stopped') {
@@ -229,6 +247,10 @@ class ArenaAudioEngine {
     if (this.meterTimer != null) {
       window.clearInterval(this.meterTimer)
       this.meterTimer = null
+    }
+    if (this.clarityTimer != null) {
+      window.clearInterval(this.clarityTimer)
+      this.clarityTimer = null
     }
 
     this.mediaStream?.getTracks().forEach((track) => track.stop())
@@ -258,6 +280,9 @@ class ArenaAudioEngine {
     this.lowShelf = null
     this.masterGain = null
     this.analyser = null
+    this.clarityAnalyser = null
+    this.currentMeterLevel = 0
+    this.vocalPresence = 0.24
   }
 
   updateState(state: CaptureSessionState) {
@@ -266,6 +291,7 @@ class ArenaAudioEngine {
       position: state.listenerPosition,
       realism: state.realism,
       energy: state.energy,
+      clarity: state.clarity,
     })
     this.applyState(state)
   }
@@ -288,6 +314,7 @@ class ArenaAudioEngine {
         total += centered * centered
       }
       const level = Math.min(1, Math.sqrt(total / data.length) * 2.6)
+      this.currentMeterLevel = level
       void chrome.runtime.sendMessage({
         type: 'AUDIO_METER_FRAME',
         target: MESSAGE_TARGET_BACKGROUND,
@@ -296,7 +323,32 @@ class ArenaAudioEngine {
     }, METER_INTERVAL_MS)
   }
 
-  private applyState(state: CaptureSessionState, forceImpulse = false) {
+  private startClarityDetectionLoop() {
+    if (!this.clarityAnalyser || !this.context) {
+      return
+    }
+
+    const spectrum = new Float32Array(this.clarityAnalyser.frequencyBinCount)
+    this.clarityTimer = window.setInterval(() => {
+      if (!this.clarityAnalyser || !this.context || this.currentMeterLevel < ANALYSIS_ACTIVE_LEVEL) {
+        return
+      }
+
+      this.clarityAnalyser.getFloatFrequencyData(spectrum)
+      const detectedPresence = estimateVocalPresenceFromSpectrum(
+        spectrum,
+        this.context.sampleRate,
+        this.clarityAnalyser.fftSize,
+      )
+      this.vocalPresence = this.vocalPresence * 0.72 + detectedPresence * 0.28
+
+      if (latestState?.clarity) {
+        this.applyState(latestState, false, false)
+      }
+    }, CLARITY_DETECTION_INTERVAL_MS)
+  }
+
+  private applyState(state: CaptureSessionState, forceImpulse = false, allowImpulseRefresh = true) {
     if (!this.context) {
       return
     }
@@ -305,12 +357,14 @@ class ArenaAudioEngine {
       state.listenerPosition,
       state.realism,
       state.energy,
+      state.clarity,
       state.arenaId,
+      this.vocalPresence,
     )
-    this.applySnapshot(snapshot, forceImpulse)
+    this.applySnapshot(snapshot, forceImpulse, allowImpulseRefresh)
   }
 
-  private applySnapshot(snapshot: AcousticSnapshot, forceImpulse = false) {
+  private applySnapshot(snapshot: AcousticSnapshot, forceImpulse = false, allowImpulseRefresh = true) {
     if (
       !this.context ||
       !this.directGain ||
@@ -354,7 +408,7 @@ class ArenaAudioEngine {
     setSmoothValue(this.lowShelf.gain, snapshot.subBoostDb, now)
     setSmoothValue(this.masterGain.gain, snapshot.outputGain, now)
 
-    if (forceImpulse || Math.random() > 0.55) {
+    if (forceImpulse || (allowImpulseRefresh && Math.random() > 0.55)) {
       this.lateConvolver.buffer = createImpulseBuffer(
         this.context,
         snapshot.lateDecaySeconds,
@@ -426,6 +480,8 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
           message.type === 'POSITION_UPDATE' ? message.position : latestState.listenerPosition,
         realism: message.type === 'PARAMS_UPDATE' ? message.realism : message.realism ?? latestState.realism,
         energy: message.type === 'PARAMS_UPDATE' ? message.energy : message.energy ?? latestState.energy,
+        clarity:
+          message.type === 'PARAMS_UPDATE' ? message.clarity : message.clarity ?? latestState.clarity,
         arenaId: message.arenaId ?? latestState.arenaId,
       }
       engine.updateState(latestState)

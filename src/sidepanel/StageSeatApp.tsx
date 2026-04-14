@@ -16,6 +16,7 @@ import {
 } from '../shared/messages'
 import { createInitialSessionState } from '../shared/sessionState'
 import type { CaptureSessionState, ListenerPosition } from '../shared/types'
+import { BipolarSlider } from './components/BipolarSlider'
 import { StageSeatVisualizer } from './components/StageSeatVisualizer'
 
 const initialState = createInitialSessionState()
@@ -222,6 +223,7 @@ export function StageSeatApp() {
       target: MESSAGE_TARGET_BACKGROUND,
       realism: value,
       energy: stateRef.current.energy,
+      clarity: stateRef.current.clarity,
     } satisfies RuntimeMessage)
   }
 
@@ -233,6 +235,19 @@ export function StageSeatApp() {
       target: MESSAGE_TARGET_BACKGROUND,
       realism: stateRef.current.realism,
       energy: value,
+      clarity: stateRef.current.clarity,
+    } satisfies RuntimeMessage)
+  }
+
+  const updateClarity = async (value: number) => {
+    logSidepanel('Clarity changed', { value })
+    setState((current) => ({ ...current, clarity: value }))
+    await chrome.runtime.sendMessage({
+      type: 'PARAMS_UPDATE',
+      target: MESSAGE_TARGET_BACKGROUND,
+      realism: stateRef.current.realism,
+      energy: stateRef.current.energy,
+      clarity: value,
     } satisfies RuntimeMessage)
   }
 
@@ -348,35 +363,15 @@ export function StageSeatApp() {
           </select>
         </div>
 
-        <label className="control-row">
-          <div className="control-copy">
-            <span>Realism</span>
-            <strong>{Math.round(state.realism * 100)}</strong>
-          </div>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={state.realism}
-            onChange={(event) => void updateRealism(Number(event.target.value))}
-          />
-        </label>
+        <BipolarSlider label="Realism" value={state.realism} onChange={(value) => void updateRealism(value)} />
 
-        <label className="control-row">
-          <div className="control-copy">
-            <span>Energy</span>
-            <strong>{Math.round(state.energy * 100)}</strong>
-          </div>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={state.energy}
-            onChange={(event) => void updateEnergy(Number(event.target.value))}
-          />
-        </label>
+        <BipolarSlider label="Energy" value={state.energy} onChange={(value) => void updateEnergy(value)} />
+
+        <BipolarSlider
+          label="Clarity (Vocal Focus)"
+          value={state.clarity}
+          onChange={(value) => void updateClarity(value)}
+        />
 
         <div className="meter-card">
           <div className="control-copy compact">
