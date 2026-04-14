@@ -56,6 +56,8 @@ Instead of exposing a dense audio panel, StageSeat turns position into sound: dr
 
 For active development, run `npm run dev` and refresh the extension from `chrome://extensions` after each rebuild.
 
+Set `VITE_DEBUG_MODE=true` in `.env.local` if you want the side panel to show debug-only readouts such as the live key estimate next to the meter label.
+
 ## Commands
 
 - `npm run build`: build the extension into `dist/`

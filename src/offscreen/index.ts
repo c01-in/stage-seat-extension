@@ -1,14 +1,45 @@
 import { deriveAcousticSnapshot } from '../shared/acoustics'
+import { DEBUG_MODE } from '../shared/debug'
 import {
   MESSAGE_TARGET_BACKGROUND,
   MESSAGE_TARGET_OFFSCREEN,
   isTargetedMessage,
   type RuntimeMessage,
 } from '../shared/messages'
+import {
+  buildChromaFromSpectrum,
+  estimateModeForTonic,
+  formatKeySignatureFromTonic,
+  getChromaEnergy,
+  getPitchClassIndex,
+  smoothChroma,
+} from '../shared/musicKey'
+import {
+  detectPitchFromTimeDomain,
+  formatPitchLabelFromFrequency,
+  smoothFrequency,
+} from '../shared/pitch'
 import type { AcousticSnapshot, CaptureSessionState, DebugLogEntry } from '../shared/types'
 
 const SMOOTH_SECONDS = 0.08
 const METER_INTERVAL_MS = 1000 / 24
+const PITCH_DETECTION_INTERVAL_MS = 140
+const PITCH_NULL_REPORT_THRESHOLD = 8
+const BPM_DETECTION_INTERVAL_MS = 100
+const SONG_KEY_DETECTION_INTERVAL_MS = 1200
+const SONG_KEY_NULL_REPORT_THRESHOLD = 10
+const MIN_SONG_KEY_CHROMA_ENERGY = 0.004
+const SONG_KEY_NOTE_WINDOW_MS = 16000
+const MIN_SONG_KEY_NOTE_SAMPLES = 8
+const DEFAULT_NOTE_WINDOW_MS = 3600
+const MIN_NOTE_WINDOW_MS = 2200
+const MAX_NOTE_WINDOW_MS = 6200
+const ASSUMED_BEATS_PER_BAR = 4
+const ASSUMED_BARS_PER_WINDOW = 2
+const BPM_MIN = 60
+const BPM_MAX = 180
+const BPM_HISTORY_MS = 18000
+const BPM_REPORT_DELTA = 2
 
 function toDetails(value: unknown) {
   if (value == null) {
@@ -43,6 +74,103 @@ function setSmoothValue(audioParam: AudioParam, value: number, now: number) {
   audioParam.setTargetAtTime(value, now, SMOOTH_SECONDS)
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function normalizeBpm(rawBpm: number) {
+  let bpm = rawBpm
+  while (bpm < BPM_MIN) {
+    bpm *= 2
+  }
+  while (bpm > BPM_MAX) {
+    bpm /= 2
+  }
+  return bpm
+}
+
+function estimateTempoFromFluxHistory(fluxHistory: readonly { timestamp: number; value: number }[]) {
+  if (fluxHistory.length < 32) {
+    return null
+  }
+
+  const values = fluxHistory.map((entry) => entry.value)
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length
+  const centered = values.map((value) => Math.max(0, value - mean * 0.92))
+  const stepMs = Math.max(
+    1,
+    fluxHistory[fluxHistory.length - 1].timestamp - fluxHistory[fluxHistory.length - 2].timestamp,
+  )
+
+  const minLag = Math.round(60_000 / (BPM_MAX * stepMs))
+  const maxLag = Math.round(60_000 / (BPM_MIN * stepMs))
+  let bestLag = -1
+  let bestScore = 0
+
+  for (let lag = minLag; lag <= maxLag; lag += 1) {
+    let score = 0
+    for (let index = lag; index < centered.length; index += 1) {
+      score += centered[index] * centered[index - lag]
+    }
+
+    const bpm = 60_000 / (lag * stepMs)
+    const slowPreference = bpm <= 110 ? 1.08 : 1
+    score *= slowPreference
+
+    if (score > bestScore) {
+      bestScore = score
+      bestLag = lag
+    }
+  }
+
+  if (bestLag < 0) {
+    return null
+  }
+
+  const bpm = normalizeBpm(60_000 / (bestLag * stepMs))
+  const halfBpm = bpm / 2
+  if (halfBpm >= BPM_MIN) {
+    const halfLag = Math.round(60_000 / (halfBpm * stepMs))
+    let halfScore = 0
+    for (let index = halfLag; index < centered.length; index += 1) {
+      halfScore += centered[index] * centered[index - halfLag]
+    }
+    if (bpm >= 116 && halfScore >= bestScore * 0.76) {
+      return Math.round(halfBpm)
+    }
+  }
+
+  return Math.round(bpm)
+}
+
+function computeSpectralFlux(
+  previousSpectrum: Float32Array | null,
+  currentSpectrum: Float32Array,
+  sampleRate: number,
+  fftSize: number,
+) {
+  let flux = 0
+  const minFrequencyHz = 40
+  const maxFrequencyHz = 2500
+
+  for (let bin = 1; bin < currentSpectrum.length; bin += 1) {
+    const frequency = (bin * sampleRate) / fftSize
+    if (frequency < minFrequencyHz || frequency > maxFrequencyHz) {
+      continue
+    }
+
+    const currentMagnitude = Math.max(0, (currentSpectrum[bin] + 100) / 100)
+    const previousMagnitude =
+      previousSpectrum != null ? Math.max(0, (previousSpectrum[bin] + 100) / 100) : 0
+    const delta = currentMagnitude - previousMagnitude
+    if (delta > 0) {
+      flux += delta
+    }
+  }
+
+  return flux
+}
+
 function createImpulseBuffer(
   context: AudioContext,
   decaySeconds: number,
@@ -72,6 +200,9 @@ class ArenaAudioEngine {
   private context: AudioContext | null = null
   private mediaStream: MediaStream | null = null
   private meterTimer: number | null = null
+  private pitchTimer: number | null = null
+  private bpmTimer: number | null = null
+  private songKeyTimer: number | null = null
 
   private directGain: GainNode | null = null
   private directPanner: StereoPannerNode | null = null
@@ -92,6 +223,27 @@ class ArenaAudioEngine {
   private lowShelf: BiquadFilterNode | null = null
   private masterGain: GainNode | null = null
   private analyser: AnalyserNode | null = null
+  private songKeyAnalyser: AnalyserNode | null = null
+  private pitchHighpass: BiquadFilterNode | null = null
+  private pitchLowpass: BiquadFilterNode | null = null
+  private pitchAnalyser: AnalyserNode | null = null
+  private lastReportedSongKey: string | null = null
+  private pendingSongKey: string | null = null
+  private pendingSongKeyFrames = 0
+  private smoothedChroma: number[] | null = null
+  private songKeySampleCount = 0
+  private nullSongKeyFrames = 0
+  private lastReportedNote: string | null = null
+  private pendingNote: string | null = null
+  private pendingNoteFrames = 0
+  private pitchSampleCount = 0
+  private nullPitchFrames = 0
+  private smoothedPitchHz: number | null = null
+  private noteHistory: Array<{ timestamp: number; note: string }> = []
+  private spectralFluxHistory: Array<{ timestamp: number; value: number }> = []
+  private previousBpmSpectrum: Float32Array | null = null
+  private estimatedBpm: number | null = null
+  private lastReportedBpm: number | null = null
 
   async start(streamId: string, state: CaptureSessionState) {
     await this.stop('restart')
@@ -157,8 +309,40 @@ class ArenaAudioEngine {
     const masterGain = this.context.createGain()
     const analyser = this.context.createAnalyser()
     analyser.fftSize = 1024
+    const songKeyAnalyser = DEBUG_MODE ? this.context.createAnalyser() : null
+    if (songKeyAnalyser) {
+      songKeyAnalyser.fftSize = 4096
+      songKeyAnalyser.smoothingTimeConstant = 0.88
+      songKeyAnalyser.minDecibels = -100
+      songKeyAnalyser.maxDecibels = -12
+    }
+    const pitchHighpass = DEBUG_MODE ? this.context.createBiquadFilter() : null
+    if (pitchHighpass) {
+      pitchHighpass.type = 'highpass'
+      pitchHighpass.frequency.value = 140
+      pitchHighpass.Q.value = 0.8
+    }
+    const pitchLowpass = DEBUG_MODE ? this.context.createBiquadFilter() : null
+    if (pitchLowpass) {
+      pitchLowpass.type = 'lowpass'
+      pitchLowpass.frequency.value = 1200
+      pitchLowpass.Q.value = 0.7
+    }
+    const pitchAnalyser = DEBUG_MODE ? this.context.createAnalyser() : null
+    if (pitchAnalyser) {
+      pitchAnalyser.fftSize = 4096
+      pitchAnalyser.smoothingTimeConstant = 0.12
+    }
 
     sourceNode.connect(directLowpass)
+    if (songKeyAnalyser) {
+      sourceNode.connect(songKeyAnalyser)
+    }
+    if (pitchHighpass && pitchLowpass && pitchAnalyser) {
+      sourceNode.connect(pitchHighpass)
+      pitchHighpass.connect(pitchLowpass)
+      pitchLowpass.connect(pitchAnalyser)
+    }
     directLowpass.connect(directPresence)
     directPresence.connect(directPanner)
     directPanner.connect(directGain)
@@ -183,8 +367,8 @@ class ArenaAudioEngine {
 
     lowShelf.connect(compressor)
     compressor.connect(masterGain)
+    masterGain.connect(this.context.destination)
     masterGain.connect(analyser)
-    analyser.connect(this.context.destination)
 
     this.directGain = directGain
     this.directPanner = directPanner
@@ -205,6 +389,27 @@ class ArenaAudioEngine {
     this.lowShelf = lowShelf
     this.masterGain = masterGain
     this.analyser = analyser
+    this.songKeyAnalyser = songKeyAnalyser
+    this.pitchHighpass = pitchHighpass
+    this.pitchLowpass = pitchLowpass
+    this.pitchAnalyser = pitchAnalyser
+    this.lastReportedSongKey = state.currentSongKey
+    this.pendingSongKey = null
+    this.pendingSongKeyFrames = 0
+    this.smoothedChroma = null
+    this.songKeySampleCount = 0
+    this.nullSongKeyFrames = 0
+    this.lastReportedNote = state.currentDetectedNote
+    this.pendingNote = null
+    this.pendingNoteFrames = 0
+    this.pitchSampleCount = 0
+    this.nullPitchFrames = 0
+    this.smoothedPitchHz = null
+    this.noteHistory = []
+    this.spectralFluxHistory = []
+    this.previousBpmSpectrum = null
+    this.estimatedBpm = null
+    this.lastReportedBpm = null
 
     media.getAudioTracks().forEach((track) => {
       track.addEventListener('ended', () => {
@@ -222,6 +427,9 @@ class ArenaAudioEngine {
     logOffscreen('Audio context resumed', { state: this.context.state })
     this.applyState(state, true)
     this.startMeterLoop()
+    this.startBpmDetectionLoop()
+    this.startSongKeyDetectionLoop()
+    this.startPitchDetectionLoop()
   }
 
   async stop(reason = 'Stopped') {
@@ -229,6 +437,18 @@ class ArenaAudioEngine {
     if (this.meterTimer != null) {
       window.clearInterval(this.meterTimer)
       this.meterTimer = null
+    }
+    if (this.pitchTimer != null) {
+      window.clearInterval(this.pitchTimer)
+      this.pitchTimer = null
+    }
+    if (this.bpmTimer != null) {
+      window.clearInterval(this.bpmTimer)
+      this.bpmTimer = null
+    }
+    if (this.songKeyTimer != null) {
+      window.clearInterval(this.songKeyTimer)
+      this.songKeyTimer = null
     }
 
     this.mediaStream?.getTracks().forEach((track) => track.stop())
@@ -258,6 +478,27 @@ class ArenaAudioEngine {
     this.lowShelf = null
     this.masterGain = null
     this.analyser = null
+    this.songKeyAnalyser = null
+    this.pitchHighpass = null
+    this.pitchLowpass = null
+    this.pitchAnalyser = null
+    this.lastReportedSongKey = null
+    this.pendingSongKey = null
+    this.pendingSongKeyFrames = 0
+    this.smoothedChroma = null
+    this.songKeySampleCount = 0
+    this.nullSongKeyFrames = 0
+    this.lastReportedNote = null
+    this.pendingNote = null
+    this.pendingNoteFrames = 0
+    this.pitchSampleCount = 0
+    this.nullPitchFrames = 0
+    this.smoothedPitchHz = null
+    this.noteHistory = []
+    this.spectralFluxHistory = []
+    this.previousBpmSpectrum = null
+    this.estimatedBpm = null
+    this.lastReportedBpm = null
   }
 
   updateState(state: CaptureSessionState) {
@@ -294,6 +535,356 @@ class ArenaAudioEngine {
         level,
       } satisfies RuntimeMessage)
     }, METER_INTERVAL_MS)
+  }
+
+  private startSongKeyDetectionLoop() {
+    if (!DEBUG_MODE || !this.songKeyAnalyser || !this.context) {
+      return
+    }
+
+    logOffscreen('Song key detector enabled', {
+      intervalMs: SONG_KEY_DETECTION_INTERVAL_MS,
+      fftSize: this.songKeyAnalyser.fftSize,
+    })
+
+    const spectrum = new Float32Array(this.songKeyAnalyser.frequencyBinCount)
+    this.songKeyTimer = window.setInterval(() => {
+      if (!this.songKeyAnalyser || !this.context) {
+        return
+      }
+
+      const now = Date.now()
+      this.songKeySampleCount += 1
+      this.songKeyAnalyser.getFloatFrequencyData(spectrum)
+      const chroma = buildChromaFromSpectrum(
+        spectrum,
+        this.context.sampleRate,
+        this.songKeyAnalyser.fftSize,
+      )
+      this.smoothedChroma = smoothChroma(this.smoothedChroma, chroma, 0.78)
+      const tonicLabel = this.getDominantSongTonic(now)
+      const tonicIndex = tonicLabel != null ? getPitchClassIndex(tonicLabel) : -1
+      const modeEstimate =
+        tonicIndex >= 0 && this.smoothedChroma && getChromaEnergy(this.smoothedChroma) >= MIN_SONG_KEY_CHROMA_ENERGY
+          ? estimateModeForTonic(this.smoothedChroma, tonicIndex)
+          : null
+      const nextSongKey = formatKeySignatureFromTonic(tonicLabel, modeEstimate?.mode ?? null)
+
+      if (this.songKeySampleCount <= 3 || this.songKeySampleCount % 5 === 0) {
+        logOffscreen('Song key detector sample', {
+          sampleCount: this.songKeySampleCount,
+          tonic: tonicLabel,
+          chromaEnergy: this.smoothedChroma ? Number(getChromaEnergy(this.smoothedChroma).toFixed(6)) : 0,
+          songKey: nextSongKey,
+          confidence: modeEstimate ? Number(modeEstimate.confidence.toFixed(4)) : null,
+        })
+      }
+
+      this.maybeReportSongKey(nextSongKey)
+    }, SONG_KEY_DETECTION_INTERVAL_MS)
+  }
+
+  private startBpmDetectionLoop() {
+    if (!DEBUG_MODE || !this.songKeyAnalyser || !this.context) {
+      return
+    }
+
+    logOffscreen('Bpm detector enabled', {
+      intervalMs: BPM_DETECTION_INTERVAL_MS,
+      fftSize: this.songKeyAnalyser.fftSize,
+    })
+
+    const spectrum = new Float32Array(this.songKeyAnalyser.frequencyBinCount)
+    this.bpmTimer = window.setInterval(() => {
+      if (!this.songKeyAnalyser || !this.context) {
+        return
+      }
+
+      const now = Date.now()
+      this.songKeyAnalyser.getFloatFrequencyData(spectrum)
+      const flux = computeSpectralFlux(
+        this.previousBpmSpectrum,
+        spectrum,
+        this.context.sampleRate,
+        this.songKeyAnalyser.fftSize,
+      )
+      this.previousBpmSpectrum = new Float32Array(spectrum)
+      this.spectralFluxHistory = [
+        ...this.spectralFluxHistory.filter((entry) => now - entry.timestamp <= BPM_HISTORY_MS),
+        { timestamp: now, value: flux },
+      ]
+
+      const estimatedTempo = estimateTempoFromFluxHistory(this.spectralFluxHistory)
+      if (estimatedTempo != null) {
+        this.estimatedBpm = estimatedTempo
+        this.maybeReportBpm()
+      }
+    }, BPM_DETECTION_INTERVAL_MS)
+  }
+
+  private startPitchDetectionLoop() {
+    if (!DEBUG_MODE || !this.pitchAnalyser || !this.context) {
+      return
+    }
+
+    logOffscreen('Pitch detector enabled', {
+      intervalMs: PITCH_DETECTION_INTERVAL_MS,
+      fftSize: this.pitchAnalyser.fftSize,
+      filterHz: {
+        highpass: this.pitchHighpass?.frequency.value ?? null,
+        lowpass: this.pitchLowpass?.frequency.value ?? null,
+      },
+    })
+
+    const samples = new Float32Array(this.pitchAnalyser.fftSize)
+    this.pitchTimer = window.setInterval(() => {
+      if (!this.pitchAnalyser || !this.context) {
+        return
+      }
+
+      this.pitchSampleCount += 1
+      this.pitchAnalyser.getFloatTimeDomainData(samples)
+      const now = Date.now()
+      const estimate = detectPitchFromTimeDomain(samples, this.context.sampleRate)
+      if (estimate) {
+        this.smoothedPitchHz = smoothFrequency(this.smoothedPitchHz, estimate.frequency, 0.42)
+      } else {
+        this.smoothedPitchHz = null
+      }
+      const detectedNote = formatPitchLabelFromFrequency(this.smoothedPitchHz)
+      if (detectedNote) {
+        this.noteHistory.push({ timestamp: now, note: detectedNote })
+      }
+      this.pruneNoteHistory(now)
+      const nextNote = this.getDominantRecentNote(now)
+
+      if (this.pitchSampleCount <= 4 || this.pitchSampleCount % 10 === 0) {
+        logOffscreen('Pitch detector sample', {
+          sampleCount: this.pitchSampleCount,
+          frequencyHz: this.smoothedPitchHz ? Number(this.smoothedPitchHz.toFixed(2)) : null,
+          detectedNote,
+          dominantNote: nextNote,
+          correlation: estimate ? Number(estimate.correlation.toFixed(4)) : null,
+          bpm: this.estimatedBpm ? Math.round(this.estimatedBpm) : null,
+          windowMs: this.getNoteWindowMs(),
+        })
+      }
+
+      this.maybeReportDetectedNote(nextNote)
+    }, PITCH_DETECTION_INTERVAL_MS)
+  }
+
+  private maybeReportBpm() {
+    const roundedBpm = this.estimatedBpm ? Math.round(this.estimatedBpm) : null
+    if (roundedBpm === this.lastReportedBpm) {
+      return
+    }
+
+    if (
+      roundedBpm != null &&
+      this.lastReportedBpm != null &&
+      Math.abs(roundedBpm - this.lastReportedBpm) < BPM_REPORT_DELTA
+    ) {
+      return
+    }
+
+    this.lastReportedBpm = roundedBpm
+
+    if (latestState) {
+      latestState = {
+        ...latestState,
+        currentEstimatedBpm: roundedBpm,
+      }
+    }
+
+    logOffscreen('Estimated bpm', { bpm: roundedBpm })
+    void chrome.runtime.sendMessage({
+      type: 'BPM_UPDATE',
+      target: MESSAGE_TARGET_BACKGROUND,
+      bpm: roundedBpm,
+    } satisfies RuntimeMessage)
+  }
+
+  private getNoteWindowMs() {
+    if (!this.estimatedBpm) {
+      return DEFAULT_NOTE_WINDOW_MS
+    }
+
+    const beatsPerWindow = ASSUMED_BEATS_PER_BAR * ASSUMED_BARS_PER_WINDOW
+    const ms = (60_000 / this.estimatedBpm) * beatsPerWindow
+    return clamp(ms, MIN_NOTE_WINDOW_MS, MAX_NOTE_WINDOW_MS)
+  }
+
+  private pruneNoteHistory(now: number) {
+    const maxAgeMs = Math.max(MAX_NOTE_WINDOW_MS, DEFAULT_NOTE_WINDOW_MS) + 1200
+    this.noteHistory = this.noteHistory.filter((entry) => now - entry.timestamp <= maxAgeMs)
+  }
+
+  private getDominantRecentNote(now: number) {
+    const windowMs = this.getNoteWindowMs()
+    const recentEntries = this.noteHistory.filter((entry) => now - entry.timestamp <= windowMs)
+    if (recentEntries.length === 0) {
+      return null
+    }
+
+    const counts = new Map<string, number>()
+    for (const entry of recentEntries) {
+      counts.set(entry.note, (counts.get(entry.note) ?? 0) + 1)
+    }
+
+    let bestNote: string | null = null
+    let bestCount = 0
+    for (const entry of [...recentEntries].reverse()) {
+      const count = counts.get(entry.note) ?? 0
+      if (count > bestCount) {
+        bestNote = entry.note
+        bestCount = count
+      }
+    }
+
+    if (!bestNote) {
+      return null
+    }
+
+    const confidence = bestCount / recentEntries.length
+    return confidence >= 0.28 || recentEntries.length <= 3 ? bestNote : null
+  }
+
+  private getDominantSongTonic(now: number) {
+    const recentEntries = this.noteHistory.filter((entry) => now - entry.timestamp <= SONG_KEY_NOTE_WINDOW_MS)
+    if (recentEntries.length < MIN_SONG_KEY_NOTE_SAMPLES) {
+      return null
+    }
+
+    const counts = new Map<string, number>()
+    for (const entry of recentEntries) {
+      const tonicLabel = entry.note.replace(/-?\d+$/, '')
+      counts.set(tonicLabel, (counts.get(tonicLabel) ?? 0) + 1)
+    }
+
+    let bestLabel: string | null = null
+    let bestCount = 0
+    for (const entry of [...recentEntries].reverse()) {
+      const tonicLabel = entry.note.replace(/-?\d+$/, '')
+      const count = counts.get(tonicLabel) ?? 0
+      if (count > bestCount) {
+        bestLabel = tonicLabel
+        bestCount = count
+      }
+    }
+
+    if (!bestLabel) {
+      return null
+    }
+
+    const confidence = bestCount / recentEntries.length
+    return confidence >= 0.18 ? bestLabel : null
+  }
+
+  private maybeReportSongKey(nextSongKey: string | null) {
+    if (nextSongKey == null && this.lastReportedSongKey) {
+      this.nullSongKeyFrames += 1
+      if (this.nullSongKeyFrames < SONG_KEY_NULL_REPORT_THRESHOLD) {
+        if (this.songKeySampleCount <= 3 || this.songKeySampleCount % 5 === 0) {
+          logOffscreen('Song key detector holding previous key', {
+            previousSongKey: this.lastReportedSongKey,
+            nullFrames: this.nullSongKeyFrames,
+          })
+        }
+        return
+      }
+    } else {
+      this.nullSongKeyFrames = 0
+    }
+
+    if (nextSongKey === this.lastReportedSongKey) {
+      this.pendingSongKey = null
+      this.pendingSongKeyFrames = 0
+      return
+    }
+
+    if (nextSongKey === this.pendingSongKey) {
+      this.pendingSongKeyFrames += 1
+    } else {
+      this.pendingSongKey = nextSongKey
+      this.pendingSongKeyFrames = 1
+    }
+
+    const threshold = nextSongKey == null ? 3 : 2
+    if (this.pendingSongKeyFrames < threshold) {
+      return
+    }
+
+    this.lastReportedSongKey = nextSongKey
+    this.pendingSongKey = null
+    this.pendingSongKeyFrames = 0
+
+    if (latestState) {
+      latestState = {
+        ...latestState,
+        currentSongKey: nextSongKey,
+      }
+    }
+
+    logOffscreen('Detected song key', { songKey: nextSongKey })
+    void chrome.runtime.sendMessage({
+      type: 'SONG_KEY_UPDATE',
+      target: MESSAGE_TARGET_BACKGROUND,
+      songKey: nextSongKey,
+    } satisfies RuntimeMessage)
+  }
+
+  private maybeReportDetectedNote(nextNote: string | null) {
+    if (nextNote == null && this.lastReportedNote) {
+      this.nullPitchFrames += 1
+      if (this.nullPitchFrames < PITCH_NULL_REPORT_THRESHOLD) {
+        if (this.pitchSampleCount <= 4 || this.pitchSampleCount % 10 === 0) {
+          logOffscreen('Pitch detector holding previous note', {
+            previousNote: this.lastReportedNote,
+            nullFrames: this.nullPitchFrames,
+          })
+        }
+        return
+      }
+    } else {
+      this.nullPitchFrames = 0
+    }
+
+    if (nextNote === this.lastReportedNote) {
+      this.pendingNote = null
+      this.pendingNoteFrames = 0
+      return
+    }
+
+    if (nextNote === this.pendingNote) {
+      this.pendingNoteFrames += 1
+    } else {
+      this.pendingNote = nextNote
+      this.pendingNoteFrames = 1
+    }
+
+    const threshold = nextNote == null ? 3 : 1
+    if (this.pendingNoteFrames < threshold) {
+      return
+    }
+
+    this.lastReportedNote = nextNote
+    this.pendingNote = null
+    this.pendingNoteFrames = 0
+
+    if (latestState) {
+      latestState = {
+        ...latestState,
+        currentDetectedNote: nextNote,
+      }
+    }
+
+    logOffscreen('Detected note', { note: nextNote })
+    void chrome.runtime.sendMessage({
+      type: 'PITCH_NOTE_UPDATE',
+      target: MESSAGE_TARGET_BACKGROUND,
+      note: nextNote,
+    } satisfies RuntimeMessage)
   }
 
   private applyState(state: CaptureSessionState, forceImpulse = false) {
@@ -387,6 +978,9 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
       latestState = {
         ...message.state,
         phase: 'active',
+        currentSongKey: null,
+        currentEstimatedBpm: null,
+        currentDetectedNote: null,
         errorMessage: null,
       }
       try {

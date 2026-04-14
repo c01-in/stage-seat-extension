@@ -15,6 +15,9 @@ export type SessionReducerAction =
   | { type: 'SET_PHASE'; phase: SessionPhase }
   | { type: 'POSITION'; position: ListenerPosition }
   | { type: 'PARAMS'; realism: number; energy: number }
+  | { type: 'SONG_KEY'; songKey: string | null }
+  | { type: 'BPM'; bpm: number | null }
+  | { type: 'PITCH_NOTE'; note: string | null }
   | { type: 'SWEET_SPOT' }
   | { type: 'METER'; level: number }
   | { type: 'ERROR'; error: string }
@@ -30,6 +33,9 @@ export function createInitialSessionState(): SessionReducerState {
     realism: DEFAULT_REALISM,
     energy: DEFAULT_ENERGY,
     meterLevel: 0,
+    currentSongKey: null,
+    currentEstimatedBpm: null,
+    currentDetectedNote: null,
     errorMessage: null,
   }
 }
@@ -63,6 +69,21 @@ export function reduceSessionState(
         realism: action.realism,
         energy: action.energy,
       }
+    case 'SONG_KEY':
+      return {
+        ...state,
+        currentSongKey: action.songKey,
+      }
+    case 'BPM':
+      return {
+        ...state,
+        currentEstimatedBpm: action.bpm,
+      }
+    case 'PITCH_NOTE':
+      return {
+        ...state,
+        currentDetectedNote: action.note,
+      }
     case 'SWEET_SPOT':
       return {
         ...state,
@@ -77,6 +98,9 @@ export function reduceSessionState(
       return {
         ...state,
         phase: 'error',
+        currentSongKey: null,
+        currentEstimatedBpm: null,
+        currentDetectedNote: null,
         errorMessage: action.error,
       }
     case 'RESET':

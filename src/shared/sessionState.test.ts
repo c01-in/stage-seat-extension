@@ -14,6 +14,9 @@ describe('session state reducer', () => {
     expect(armed.tabId).toBe(12)
     expect(armed.tabTitle).toBe('Example stream')
     expect(armed.listenerPosition).toEqual(ARENA_PRESET.sweetSpot)
+    expect(armed.currentSongKey).toBeNull()
+    expect(armed.currentEstimatedBpm).toBeNull()
+    expect(armed.currentDetectedNote).toBeNull()
   })
 
   it('clamps positions into the audience area', () => {
@@ -44,5 +47,35 @@ describe('session state reducer', () => {
 
     expect(errored.phase).toBe('error')
     expect(errored.errorMessage).toBe('Capture failed')
+    expect(errored.currentSongKey).toBeNull()
+    expect(errored.currentEstimatedBpm).toBeNull()
+    expect(errored.currentDetectedNote).toBeNull()
+  })
+
+  it('stores the latest detected song key', () => {
+    const next = reduceSessionState(createInitialSessionState(), {
+      type: 'SONG_KEY',
+      songKey: 'Eb major',
+    })
+
+    expect(next.currentSongKey).toBe('Eb major')
+  })
+
+  it('stores the latest estimated bpm', () => {
+    const next = reduceSessionState(createInitialSessionState(), {
+      type: 'BPM',
+      bpm: 128,
+    })
+
+    expect(next.currentEstimatedBpm).toBe(128)
+  })
+
+  it('stores the latest detected note', () => {
+    const next = reduceSessionState(createInitialSessionState(), {
+      type: 'PITCH_NOTE',
+      note: 'C4',
+    })
+
+    expect(next.currentDetectedNote).toBe('C4')
   })
 })

@@ -50,6 +50,21 @@ export type RuntimeMessage =
       level: number
     }
   | {
+      type: 'PITCH_NOTE_UPDATE'
+      target: 'background'
+      note: string | null
+    }
+  | {
+      type: 'SONG_KEY_UPDATE'
+      target: 'background'
+      songKey: string | null
+    }
+  | {
+      type: 'BPM_UPDATE'
+      target: 'background'
+      bpm: number | null
+    }
+  | {
       type: 'CAPTURE_ERROR'
       target: 'background' | 'sidepanel'
       error: string

@@ -248,6 +248,9 @@ async function stopSession(reason = 'Stopped') {
     ...sessionState,
     phase: 'idle',
     meterLevel: 0,
+    currentSongKey: null,
+    currentEstimatedBpm: null,
+    currentDetectedNote: null,
     errorMessage: null,
   }
   emitStatus()
@@ -341,6 +344,9 @@ chrome.tabCapture.onStatusChanged.addListener((info) => {
       ...sessionState,
       phase: 'idle',
       meterLevel: 0,
+      currentSongKey: null,
+      currentEstimatedBpm: null,
+      currentDetectedNote: null,
       errorMessage: info.status === 'error' ? 'Tab capture ended unexpectedly.' : null,
     }
     emitStatus()
@@ -447,6 +453,30 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
           target: MESSAGE_TARGET_SIDEPANEL,
           level: message.level,
         })
+        sendResponse({ ok: true })
+        return
+      case 'PITCH_NOTE_UPDATE':
+        sessionState = reduceSessionState(sessionState, {
+          type: 'PITCH_NOTE',
+          note: message.note,
+        })
+        emitStatus()
+        sendResponse({ ok: true })
+        return
+      case 'SONG_KEY_UPDATE':
+        sessionState = reduceSessionState(sessionState, {
+          type: 'SONG_KEY',
+          songKey: message.songKey,
+        })
+        emitStatus()
+        sendResponse({ ok: true })
+        return
+      case 'BPM_UPDATE':
+        sessionState = reduceSessionState(sessionState, {
+          type: 'BPM',
+          bpm: message.bpm,
+        })
+        emitStatus()
         sendResponse({ ok: true })
         return
       case 'CAPTURE_ERROR':
